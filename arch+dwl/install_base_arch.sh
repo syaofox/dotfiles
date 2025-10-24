@@ -26,6 +26,42 @@ check_root() {
     fi
 }
 
+# 收集用户信息
+collect_user_info() {
+    echo "Collecting user information..." | tee -a "$LOGFILE"
+    
+    # 主机名
+    HOSTNAME=$(dialog --inputbox "Enter hostname (default: dev)" 8 40 "dev" 2>&1 >/dev/tty)
+    if [[ -z "$HOSTNAME" ]]; then
+        HOSTNAME="dev"
+    fi
+    
+    # 用户名
+    USERNAME=$(dialog --inputbox "Enter username (default: syaofox)" 8 40 "syaofox" 2>&1 >/dev/tty)
+    if [[ -z "$USERNAME" ]]; then
+        USERNAME="syaofox"
+    fi
+    
+    # Root 密码
+    ROOT_PASSWORD=$(dialog --passwordbox "Enter root password" 8 40 2>&1 >/dev/tty)
+    if [[ -z "$ROOT_PASSWORD" ]]; then
+        dialog --msgbox "Root password is required!" 8 40
+        echo -e "${RED}Error: Root password is required${NC}" | tee -a "$LOGFILE"
+        exit 1
+    fi
+    
+    # 用户密码
+    USER_PASSWORD=$(dialog --passwordbox "Enter user password for $USERNAME" 8 40 2>&1 >/dev/tty)
+    if [[ -z "$USER_PASSWORD" ]]; then
+        dialog --msgbox "User password is required!" 8 40
+        echo -e "${RED}Error: User password is required${NC}" | tee -a "$LOGFILE"
+        exit 1
+    fi
+    
+    dialog --msgbox "User information collected:\nHostname: $HOSTNAME\nUsername: $USERNAME" 8 40
+    echo -e "${GREEN}User information collected: Hostname=$HOSTNAME, Username=$USERNAME${NC}" | tee -a "$LOGFILE"
+}
+
 # 安装 dialog
 install_dialog() {
     echo "Installing dialog tool..." | tee -a "$LOGFILE"
@@ -52,62 +88,108 @@ check_uefi() {
 check_network() {
     echo "Checking network connectivity..." | tee -a "$LOGFILE"
     if ping -c 1 qq.com &> /dev/null; then
-        dialog --msgbox "Network connection is normal." 6 30
-        echo -e "${GREEN}Network connection is normal.${NC}" | tee -a "$LOGFILE"
-    else
-        dialog --yesno "Network not connected! Configure wireless network?" 8 40
-        if [[ $? -eq 0 ]]; then
+        dialog --msgbox "Network connection is normal. Will use DHCP by default." 6 30
+        echo -e "${GREEN}Network connection is normal, using DHCP.${NC}" | tee -a "$LOGFILE"
+        NETWORK_MODE="dhcp-wired"
+        IS_STATIC="no"
+        return
+    fi
+    
+    # 网络未连接，提供选择菜单
+    NETWORK_CHOICE=$(dialog --menu "Network not connected! Select network configuration:" 12 50 4 \
+        "1" "Wired network (DHCP) - Recommended" \
+        "2" "Wireless network (DHCP)" \
+        "3" "Wired network (Static IP)" \
+        "4" "Wireless network (Static IP)" \
+        2>&1 >/dev/tty)
+    
+    case $NETWORK_CHOICE in
+        "1")
+            NETWORK_MODE="dhcp-wired"
+            IS_STATIC="no"
+            dialog --msgbox "Please connect Ethernet cable and ensure DHCP is available." 8 40
+            ;;
+        "2")
+            NETWORK_MODE="dhcp-wireless"
+            IS_STATIC="no"
             systemctl start iwd
             dialog --msgbox "Please run the following commands to configure wireless network:\nstation wlan0 scan\nstation wlan0 get-networks\nstation wlan0 connect 'Your-Wifi-SSID'\nClick OK when done." 10 50
             iwctl
-            if ! ping -c 1 qq.com &> /dev/null; then
-                dialog --msgbox "Network still not connected, please check and retry!" 8 40
-                echo -e "${RED}Error: Network connection failed${NC}" | tee -a "$LOGFILE"
-                exit 1
-            fi
-            dialog --msgbox "Wireless network connected successfully." 6 30
-            echo -e "${GREEN}Wireless network connected successfully.${NC}" | tee -a "$LOGFILE"
-        else
-            dialog --msgbox "Network not connected, script cannot continue!" 8 40
-            echo -e "${RED}Error: Network not connected${NC}" | tee -a "$LOGFILE"
-            exit 1
+            ;;
+        "3")
+            NETWORK_MODE="static-wired"
+            IS_STATIC="yes"
+            IS_WIFI="no"
+            configure_static_ip
+            ;;
+        "4")
+            NETWORK_MODE="static-wireless"
+            IS_STATIC="yes"
+            IS_WIFI="yes"
+            configure_static_ip
+            systemctl start iwd
+            dialog --msgbox "Please run the following commands to configure wireless network:\nstation wlan0 scan\nstation wlan0 get-networks\nstation wlan0 connect 'Your-Wifi-SSID'\nClick OK when done." 10 50
+            iwctl
+            ;;
+        *)
+            dialog --msgbox "No network configuration selected, using DHCP wired as default." 8 40
+            NETWORK_MODE="dhcp-wired"
+            IS_STATIC="no"
+            ;;
+    esac
+    
+    # 验证网络连接
+    if ! ping -c 1 qq.com &> /dev/null; then
+        dialog --msgbox "Network still not connected, please check and retry!" 8 40
+        echo -e "${RED}Error: Network connection failed${NC}" | tee -a "$LOGFILE"
+        exit 1
+    fi
+    
+    dialog --msgbox "Network connected successfully." 6 30
+    echo -e "${GREEN}Network connected successfully using $NETWORK_MODE.${NC}" | tee -a "$LOGFILE"
+}
+
+# 配置静态IP
+configure_static_ip() {
+    IP_ADDR=$(dialog --inputbox "Enter static IPv4 address (e.g. 192.168.1.100)" 8 40 "192.168.1.100" 2>&1 >/dev/tty)
+    if [[ -z "$IP_ADDR" ]]; then
+        IP_ADDR="192.168.1.100"
+    fi
+    
+    SUBNET_MASK=$(dialog --inputbox "Enter subnet mask (e.g. 255.255.255.0 or /24)" 8 40 "/24" 2>&1 >/dev/tty)
+    if [[ -z "$SUBNET_MASK" ]]; then
+        SUBNET_MASK="/24"
+    fi
+    
+    GATEWAY=$(dialog --inputbox "Enter default gateway (e.g. 192.168.1.1)" 8 40 "192.168.1.1" 2>&1 >/dev/tty)
+    if [[ -z "$GATEWAY" ]]; then
+        GATEWAY="192.168.1.1"
+    fi
+    
+    DNS_SERVERS=$(dialog --inputbox "Enter DNS servers (comma separated, e.g. 8.8.8.8,8.8.4.4)" 8 40 "8.8.8.8,8.8.4.4" 2>&1 >/dev/tty)
+    if [[ -z "$DNS_SERVERS" ]]; then
+        DNS_SERVERS="8.8.8.8,8.8.4.4"
+    fi
+    
+    if [[ "$IS_WIFI" == "yes" ]]; then
+        WIFI_SSID=$(dialog --inputbox "Enter Wi-Fi SSID" 8 40 2>&1 >/dev/tty)
+        if [[ -z "$WIFI_SSID" ]]; then
+            dialog --msgbox "No Wi-Fi SSID provided, switching to DHCP!" 8 40
+            echo -e "${RED}Warning: No Wi-Fi SSID provided, using DHCP${NC}" | tee -a "$LOGFILE"
+            IS_STATIC="no"
+            NETWORK_MODE="dhcp-wireless"
+            return
         fi
     fi
-
-    # 询问是否配置静态 IPv4
-    dialog --yesno "Configure static IPv4 for the installed system?" 8 40
-    if [[ $? -eq 0 ]]; then
-        dialog --yesno "Configure static IPv4 for wireless network (Wi-Fi)? Otherwise configure for wired network." 8 40
-        IS_WIFI=$([[ $? -eq 0 ]] && echo "yes" || echo "no")
-        IP_ADDR=$(dialog --inputbox "Enter static IPv4 address (e.g. 192.168.1.100)" 8 40 2>&1 >/dev/tty)
-        SUBNET_MASK=$(dialog --inputbox "Enter subnet mask (e.g. 255.255.255.0 or /24)" 8 40 2>&1 >/dev/tty)
-        GATEWAY=$(dialog --inputbox "Enter default gateway (e.g. 192.168.1.1)" 8 40 2>&1 >/dev/tty)
-        DNS_SERVERS=$(dialog --inputbox "Enter DNS servers (comma separated, e.g. 8.8.8.8,8.8.4.4)" 8 40 2>&1 >/dev/tty)
-        if [[ -z "$IP_ADDR" || -z "$SUBNET_MASK" || -z "$GATEWAY" || -z "$DNS_SERVERS" ]]; then
-            dialog --msgbox "Incomplete static IPv4 configuration provided, will use DHCP!" 8 40
-            echo -e "${RED}Warning: Incomplete static IPv4 configuration, using DHCP${NC}" | tee -a "$LOGFILE"
-            IS_STATIC="no"
-        else
-            IS_STATIC="yes"
-            if [[ "$SUBNET_MASK" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-                SUBNET_MASK=$(echo "$SUBNET_MASK" | awk -F. '{print ($1*256^3 + $2*256^2 + $3*256 + $4)}' | bc | awk '{for(i=0; $1>0; i++) $1/=2; print i}')
-            fi
-            if [[ "$IS_WIFI" == "yes" ]]; then
-                WIFI_SSID=$(dialog --inputbox "Enter Wi-Fi SSID" 8 40 2>&1 >/dev/tty)
-                if [[ -z "$WIFI_SSID" ]]; then
-                    dialog --msgbox "No Wi-Fi SSID provided, will use DHCP!" 8 40
-                    echo -e "${RED}Warning: No Wi-Fi SSID provided, using DHCP${NC}" | tee -a "$LOGFILE"
-                    IS_STATIC="no"
-                fi
-            fi
-            echo -e "${GREEN}Static IPv4 configuration: IP=$IP_ADDR/$SUBNET_MASK, Gateway=$GATEWAY, DNS=$DNS_SERVERS${NC}" | tee -a "$LOGFILE"
-            if [[ "$IS_WIFI" == "yes" ]]; then
-                echo "Wi-Fi SSID: $WIFI_SSID" | tee -a "$LOGFILE"
-            fi
-        fi
-    else
-        IS_STATIC="no"
-        echo -e "${GREEN}Will use DHCP for network configuration.${NC}" | tee -a "$LOGFILE"
+    
+    # 转换子网掩码格式
+    if [[ "$SUBNET_MASK" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        SUBNET_MASK=$(echo "$SUBNET_MASK" | awk -F. '{print ($1*256^3 + $2*256^2 + $3*256 + $4)}' | bc | awk '{for(i=0; $1>0; i++) $1/=2; print i}')
+    fi
+    
+    echo -e "${GREEN}Static IPv4 configuration: IP=$IP_ADDR/$SUBNET_MASK, Gateway=$GATEWAY, DNS=$DNS_SERVERS${NC}" | tee -a "$LOGFILE"
+    if [[ "$IS_WIFI" == "yes" ]]; then
+        echo "Wi-Fi SSID: $WIFI_SSID" | tee -a "$LOGFILE"
     fi
 }
 
@@ -133,31 +215,91 @@ select_disk() {
         echo -e "${RED}Error: No disks found${NC}" | tee -a "$LOGFILE"
         exit 1
     fi
+    
+    # 如果只有一个硬盘，直接使用
+    if [[ ${#DISKS[@]} -eq 1 ]]; then
+        DISK="/dev/${DISKS[0]}"
+        dialog --msgbox "Only one disk found: $DISK\nWill use this disk automatically." 8 40
+        echo -e "${GREEN}Using single disk: $DISK${NC}" | tee -a "$LOGFILE"
+        return
+    fi
+    
     MENU=()
     for disk in "${DISKS[@]}"; do
         MENU+=("/dev/$disk" "$(lsblk -d -n -o SIZE,MODEL /dev/$disk)")
     done
     DISK=$(dialog --menu "Select main hard disk (WARNING: Data will be erased!)" 15 60 5 "${MENU[@]}" 2>&1 >/dev/tty)
     if [[ -z "$DISK" ]]; then
-        dialog --msgbox "No disk selected, script exiting!" 8 40
-        echo -e "${RED}Error: No disk selected${NC}" | tee -a "$LOGFILE"
-        exit 1
+        # 用户取消选择，使用第一个硬盘作为默认
+        DISK="/dev/${DISKS[0]}"
+        dialog --msgbox "No disk selected, using first disk as default: $DISK" 8 40
+        echo -e "${GREEN}Using default disk: $DISK${NC}" | tee -a "$LOGFILE"
+    else
+        dialog --msgbox "Selected disk: $DISK" 6 30
+        echo -e "${GREEN}Using disk: $DISK${NC}" | tee -a "$LOGFILE"
     fi
-    dialog --msgbox "Selected disk: $DISK" 6 30
-    echo -e "${GREEN}Using disk: $DISK${NC}" | tee -a "$LOGFILE"
 }
 
 # 分区磁盘
 partition_disk() {
-    dialog --msgbox "About to start fdisk partitioning $DISK.\nRecommendations:\n1. Create 1G EFI partition (${DISK}p1), type: EFI System (1)\n2. Create remaining space Btrfs partition (${DISK}p2), type: Linux filesystem (20)\nSave and exit when done (w).\nClick OK to start fdisk..." 12 50
-    fdisk "$DISK"
+    PARTITION_CHOICE=$(dialog --menu "Select partitioning method for $DISK:" 10 50 2 \
+        "1" "Automatic partitioning (Recommended)" \
+        "2" "Manual partitioning with fdisk" \
+        2>&1 >/dev/tty)
+    
+    case $PARTITION_CHOICE in
+        "1")
+            dialog --msgbox "Starting automatic partitioning...\nWill create:\n- 1GB EFI partition (${DISK}p1)\n- Remaining space Btrfs partition (${DISK}p2)" 10 50
+            echo "Starting automatic partitioning..." | tee -a "$LOGFILE"
+            
+            # 清除分区表
+            wipefs -a "$DISK"
+            
+            # 创建分区表
+            parted "$DISK" mklabel gpt
+            
+            # 创建 EFI 分区 (1GB)
+            parted "$DISK" mkpart ESP fat32 1MiB 1GiB
+            parted "$DISK" set 1 esp on
+            
+            # 创建 Btrfs 分区 (剩余空间)
+            parted "$DISK" mkpart primary btrfs 1GiB 100%
+            
+            dialog --msgbox "Automatic partitioning completed." 6 30
+            echo -e "${GREEN}Automatic partitioning completed.${NC}" | tee -a "$LOGFILE"
+            ;;
+        "2")
+            dialog --msgbox "About to start fdisk partitioning $DISK.\nRecommendations:\n1. Create 1G EFI partition (${DISK}p1), type: EFI System (1)\n2. Create remaining space Btrfs partition (${DISK}p2), type: Linux filesystem (20)\nSave and exit when done (w).\nClick OK to start fdisk..." 12 50
+            fdisk "$DISK"
+            ;;
+        *)
+            dialog --msgbox "No partitioning method selected, using automatic partitioning as default." 8 40
+            echo "Using automatic partitioning as default..." | tee -a "$LOGFILE"
+            
+            # 清除分区表
+            wipefs -a "$DISK"
+            
+            # 创建分区表
+            parted "$DISK" mklabel gpt
+            
+            # 创建 EFI 分区 (1GB)
+            parted "$DISK" mkpart ESP fat32 1MiB 1GiB
+            parted "$DISK" set 1 esp on
+            
+            # 创建 Btrfs 分区 (剩余空间)
+            parted "$DISK" mkpart primary btrfs 1GiB 100%
+            
+            dialog --msgbox "Automatic partitioning completed." 6 30
+            echo -e "${GREEN}Automatic partitioning completed.${NC}" | tee -a "$LOGFILE"
+            ;;
+    esac
+    
+    # 验证分区
     if [[ ! -b "${DISK}p1" || ! -b "${DISK}p2" ]]; then
         dialog --msgbox "Partitioning failed, ${DISK}p1 or ${DISK}p2 not found!" 8 40
         echo -e "${RED}Error: Partitioning failed${NC}" | tee -a "$LOGFILE"
         exit 1
     fi
-    dialog --msgbox "Partitioning completed." 6 30
-    echo -e "${GREEN}Partitioning completed.${NC}" | tee -a "$LOGFILE"
 }
 
 # 格式化分区
@@ -232,8 +374,15 @@ configure_fstab() {
     echo "Generating fstab file..." | tee -a "$LOGFILE"
     genfstab -U /mnt >> /mnt/etc/fstab
     echo "/swap/swapfile none swap defaults 0 0" >> /mnt/etc/fstab
-    dialog --msgbox "Please check /mnt/etc/fstab, ensure Btrfs subvolumes and Swapfile are configured correctly.\nClick OK to open nano..." 10 50
-    nano /mnt/etc/fstab
+    
+    dialog --msgbox "fstab file has been generated. Please review the contents:" 8 40
+    arch-chroot /mnt cat /etc/fstab
+    dialog --yesno "Is the fstab configuration correct?" 8 40
+    if [[ $? -ne 0 ]]; then
+        dialog --msgbox "Please check the fstab file manually after installation!" 8 40
+        echo -e "${RED}Warning: fstab configuration needs manual review${NC}" | tee -a "$LOGFILE"
+    fi
+    
     dialog --msgbox "fstab configuration completed." 6 30
     echo -e "${GREEN}fstab configuration completed.${NC}" | tee -a "$LOGFILE"
 }
@@ -275,13 +424,13 @@ echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
 # 主机名和 hosts
 echo "Setting hostname and hosts..." | tee -a "\$LOGFILE"
-echo "dev" > /etc/hostname
+echo "$HOSTNAME" > /etc/hostname
 cat << EOT > /etc/hosts
 127.0.0.1	localhost
 ::1		localhost
-127.0.1.1	dev.localdomain	dev
+127.0.1.1	$HOSTNAME.localdomain	$HOSTNAME
 EOT
-if ping -c 1 localhost &> /dev/null && ping -c 1 dev &> /dev/null; then
+if ping -c 1 localhost &> /dev/null && ping -c 1 $HOSTNAME &> /dev/null; then
     echo -e "\${GREEN}hosts configuration verification passed.\${NC}" | tee -a "\$LOGFILE"
 else
     echo -e "\${RED}Error: hosts configuration failed\${NC}" | tee -a "\$LOGFILE"
@@ -347,11 +496,11 @@ fi
 
 # 设置密码
 echo "Setting root password..." | tee -a "\$LOGFILE"
-passwd
-echo "Creating user syaofox..." | tee -a "\$LOGFILE"
-useradd -m -g users -G wheel,video syaofox
-echo "Setting syaofox password..." | tee -a "\$LOGFILE"
-passwd syaofox
+echo "root:$ROOT_PASSWORD" | chpasswd
+echo "Creating user $USERNAME..." | tee -a "\$LOGFILE"
+useradd -m -g users -G wheel,video $USERNAME
+echo "Setting $USERNAME password..." | tee -a "\$LOGFILE"
+echo "$USERNAME:$USER_PASSWORD" | chpasswd
 echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/wheel
 
 # 配置 NVIDIA
@@ -398,9 +547,20 @@ echo "Installing systemd-boot and \$UCODE..." | tee -a "\$LOGFILE"
 bootctl install
 pacman -S --noconfirm "\$UCODE"
 mkinitcpio -P
-echo "Please get Btrfs root partition UUID (/dev/nvme0n1p2) and edit /boot/loader/entries/arch.conf" | tee -a "\$LOGFILE"
-blkid /dev/nvme0n1p2
-nano /boot/loader/entries/arch.conf
+
+# 自动获取 Btrfs 根分区 UUID
+BTRFS_UUID=\$(blkid -s UUID -o value $DISK"p2")
+echo "Btrfs root partition UUID: \$BTRFS_UUID" | tee -a "\$LOGFILE"
+
+# 自动生成 arch.conf
+cat << EOT > /boot/loader/entries/arch.conf
+title   Arch Linux
+linux   /vmlinuz-linux
+initrd  \$UCODE_IMG
+initrd  /initramfs-linux.img
+options root=UUID=\$BTRFS_UUID rw rootflags=subvol=@ quiet splash
+EOT
+
 cat << EOT > /boot/loader/loader.conf
 default arch.conf
 timeout 4
@@ -446,6 +606,7 @@ final_check() {
 main() {
     check_root
     install_dialog
+    collect_user_info
     check_uefi
     check_network
     check_timesync
