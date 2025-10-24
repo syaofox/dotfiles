@@ -351,7 +351,7 @@ format_partitions() {
     fi
     
     mkfs.fat -F 32 "$EFI_PARTITION"
-    mkfs.btrfs -f -O ssd "$BTRFS_PARTITION"
+    mkfs.btrfs -f -O "$BTRFS_PARTITION"
     dialog --msgbox "Partition formatting completed." 6 30
     echo -e "${GREEN}Partition formatting completed.${NC}" | tee -a "$LOGFILE"
 }
