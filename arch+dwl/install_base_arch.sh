@@ -296,16 +296,36 @@ partition_disk() {
     
     # 动态检测分区名称
     sleep 2  # 等待分区设备文件创建
-    PARTITIONS=($(lsblk -n -o NAME "$DISK" | grep -E '^[^[:space:]]+[0-9]+$'))
+    
+    # 使用更简单的方法检测分区
+    DISK_BASENAME=$(basename "$DISK")
+    PARTITIONS=()
+    
+    # 检查可能的分区命名模式
+    for i in 1 2; do
+        if [[ -b "${DISK}${i}" ]]; then
+            PARTITIONS+=("${DISK_BASENAME}${i}")
+        elif [[ -b "${DISK}p${i}" ]]; then
+            PARTITIONS+=("${DISK_BASENAME}p${i}")
+        fi
+    done
+    
     if [[ ${#PARTITIONS[@]} -lt 2 ]]; then
-        dialog --msgbox "Partitioning failed, not enough partitions found!" 8 40
-        echo -e "${RED}Error: Partitioning failed - found ${#PARTITIONS[@]} partitions${NC}" | tee -a "$LOGFILE"
+        dialog --msgbox "Partitioning failed, not enough partitions found!\nFound: ${PARTITIONS[*]}" 8 40
+        echo -e "${RED}Error: Partitioning failed - found ${#PARTITIONS[@]} partitions: ${PARTITIONS[*]}${NC}" | tee -a "$LOGFILE"
         exit 1
     fi
     
     # 设置分区变量
     EFI_PARTITION="/dev/${PARTITIONS[0]}"
     BTRFS_PARTITION="/dev/${PARTITIONS[1]}"
+    
+    # 验证分区设备文件是否存在
+    if [[ ! -b "$EFI_PARTITION" || ! -b "$BTRFS_PARTITION" ]]; then
+        dialog --msgbox "Partition device files not found!\nEFI: $EFI_PARTITION\nBtrfs: $BTRFS_PARTITION" 8 40
+        echo -e "${RED}Error: Partition device files not found${NC}" | tee -a "$LOGFILE"
+        exit 1
+    fi
     
     dialog --msgbox "Partitions detected:\nEFI: $EFI_PARTITION\nBtrfs: $BTRFS_PARTITION" 8 40
     echo -e "${GREEN}Partitions detected: EFI=$EFI_PARTITION, Btrfs=$BTRFS_PARTITION${NC}" | tee -a "$LOGFILE"
@@ -314,6 +334,22 @@ partition_disk() {
 # 格式化分区
 format_partitions() {
     echo "Formatting partitions..." | tee -a "$LOGFILE"
+    echo "DEBUG: EFI_PARTITION='$EFI_PARTITION'" | tee -a "$LOGFILE"
+    echo "DEBUG: BTRFS_PARTITION='$BTRFS_PARTITION'" | tee -a "$LOGFILE"
+    
+    # 再次验证分区存在
+    if [[ ! -b "$EFI_PARTITION" ]]; then
+        dialog --msgbox "EFI partition not found: $EFI_PARTITION" 8 40
+        echo -e "${RED}Error: EFI partition not found: $EFI_PARTITION${NC}" | tee -a "$LOGFILE"
+        exit 1
+    fi
+    
+    if [[ ! -b "$BTRFS_PARTITION" ]]; then
+        dialog --msgbox "Btrfs partition not found: $BTRFS_PARTITION" 8 40
+        echo -e "${RED}Error: Btrfs partition not found: $BTRFS_PARTITION${NC}" | tee -a "$LOGFILE"
+        exit 1
+    fi
+    
     mkfs.fat -F 32 "$EFI_PARTITION"
     mkfs.btrfs -f -O ssd "$BTRFS_PARTITION"
     dialog --msgbox "Partition formatting completed." 6 30
