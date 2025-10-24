@@ -209,7 +209,7 @@ check_timesync() {
 # 选择硬盘
 select_disk() {
     echo "Scanning available disks..." | tee -a "$LOGFILE"
-    DISKS=($(lsblk -d -n -o NAME | grep -E '^(sd|nvme)'))
+    DISKS=($(lsblk -d -n -o NAME | grep -E '^(sd|vd|nvme)'))
     if [[ ${#DISKS[@]} -eq 0 ]]; then
         dialog --msgbox "No available disks found! Please check hardware." 8 40
         echo -e "${RED}Error: No disks found${NC}" | tee -a "$LOGFILE"
