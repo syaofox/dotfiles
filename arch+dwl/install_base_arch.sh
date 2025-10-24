@@ -249,7 +249,7 @@ partition_disk() {
     
     case $PARTITION_CHOICE in
         "1")
-            dialog --msgbox "Starting automatic partitioning...\nWill create:\n- 1GB EFI partition (${DISK}p1)\n- Remaining space Btrfs partition (${DISK}p2)" 10 50
+            dialog --msgbox "Starting automatic partitioning...\nWill create:\n- 1GB EFI partition\n- Remaining space Btrfs partition" 10 50
             echo "Starting automatic partitioning..." | tee -a "$LOGFILE"
             
             # 清除分区表
@@ -269,7 +269,7 @@ partition_disk() {
             echo -e "${GREEN}Automatic partitioning completed.${NC}" | tee -a "$LOGFILE"
             ;;
         "2")
-            dialog --msgbox "About to start fdisk partitioning $DISK.\nRecommendations:\n1. Create 1G EFI partition (${DISK}p1), type: EFI System (1)\n2. Create remaining space Btrfs partition (${DISK}p2), type: Linux filesystem (20)\nSave and exit when done (w).\nClick OK to start fdisk..." 12 50
+            dialog --msgbox "About to start fdisk partitioning $DISK.\nRecommendations:\n1. Create 1G EFI partition, type: EFI System (1)\n2. Create remaining space Btrfs partition, type: Linux filesystem (20)\nSave and exit when done (w).\nClick OK to start fdisk..." 12 50
             fdisk "$DISK"
             ;;
         *)
@@ -294,19 +294,28 @@ partition_disk() {
             ;;
     esac
     
-    # 验证分区
-    if [[ ! -b "${DISK}p1" || ! -b "${DISK}p2" ]]; then
-        dialog --msgbox "Partitioning failed, ${DISK}p1 or ${DISK}p2 not found!" 8 40
-        echo -e "${RED}Error: Partitioning failed${NC}" | tee -a "$LOGFILE"
+    # 动态检测分区名称
+    sleep 2  # 等待分区设备文件创建
+    PARTITIONS=($(lsblk -n -o NAME "$DISK" | grep -E '^[^[:space:]]+[0-9]+$'))
+    if [[ ${#PARTITIONS[@]} -lt 2 ]]; then
+        dialog --msgbox "Partitioning failed, not enough partitions found!" 8 40
+        echo -e "${RED}Error: Partitioning failed - found ${#PARTITIONS[@]} partitions${NC}" | tee -a "$LOGFILE"
         exit 1
     fi
+    
+    # 设置分区变量
+    EFI_PARTITION="/dev/${PARTITIONS[0]}"
+    BTRFS_PARTITION="/dev/${PARTITIONS[1]}"
+    
+    dialog --msgbox "Partitions detected:\nEFI: $EFI_PARTITION\nBtrfs: $BTRFS_PARTITION" 8 40
+    echo -e "${GREEN}Partitions detected: EFI=$EFI_PARTITION, Btrfs=$BTRFS_PARTITION${NC}" | tee -a "$LOGFILE"
 }
 
 # 格式化分区
 format_partitions() {
     echo "Formatting partitions..." | tee -a "$LOGFILE"
-    mkfs.fat -F 32 "${DISK}p1"
-    mkfs.btrfs -f -O ssd "${DISK}p2"
+    mkfs.fat -F 32 "$EFI_PARTITION"
+    mkfs.btrfs -f -O ssd "$BTRFS_PARTITION"
     dialog --msgbox "Partition formatting completed." 6 30
     echo -e "${GREEN}Partition formatting completed.${NC}" | tee -a "$LOGFILE"
 }
@@ -314,7 +323,7 @@ format_partitions() {
 # 创建并挂载 Btrfs 子卷
 setup_btrfs() {
     echo "Creating and mounting Btrfs subvolumes..." | tee -a "$LOGFILE"
-    mount "${DISK}p2" /mnt
+    mount "$BTRFS_PARTITION" /mnt
     btrfs subvolume create /mnt/@
     btrfs subvolume create /mnt/@home
     btrfs subvolume create /mnt/@swap
@@ -322,12 +331,12 @@ setup_btrfs() {
     btrfs subvolume create /mnt/@cache
     umount /mnt
     mkdir -p /mnt/{home,var/log,var/cache,swap,boot}
-    mount -o subvol=@,compress=zstd,noatime "${DISK}p2" /mnt
-    mount -o subvol=@home,compress=zstd,noatime "${DISK}p2" /mnt/home
-    mount -o subvol=@log,compress=zstd,noatime "${DISK}p2" /mnt/var/log
-    mount -o subvol=@cache,compress=zstd,noatime "${DISK}p2" /mnt/var/cache
-    mount -o subvol=@swap "${DISK}p2" /mnt/swap
-    mount "${DISK}p1" /mnt/boot
+    mount -o subvol=@,compress=zstd,noatime "$BTRFS_PARTITION" /mnt
+    mount -o subvol=@home,compress=zstd,noatime "$BTRFS_PARTITION" /mnt/home
+    mount -o subvol=@log,compress=zstd,noatime "$BTRFS_PARTITION" /mnt/var/log
+    mount -o subvol=@cache,compress=zstd,noatime "$BTRFS_PARTITION" /mnt/var/cache
+    mount -o subvol=@swap "$BTRFS_PARTITION" /mnt/swap
+    mount "$EFI_PARTITION" /mnt/boot
     if mount | grep -q "/mnt"; then
         dialog --msgbox "Btrfs subvolumes mounted successfully." 6 30
         echo -e "${GREEN}Btrfs subvolumes mounting completed.${NC}" | tee -a "$LOGFILE"
@@ -549,7 +558,7 @@ pacman -S --noconfirm "\$UCODE"
 mkinitcpio -P
 
 # 自动获取 Btrfs 根分区 UUID
-BTRFS_UUID=\$(blkid -s UUID -o value $DISK"p2")
+BTRFS_UUID=\$(blkid -s UUID -o value $BTRFS_PARTITION)
 echo "Btrfs root partition UUID: \$BTRFS_UUID" | tee -a "\$LOGFILE"
 
 # 自动生成 arch.conf
