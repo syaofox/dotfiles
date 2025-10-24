@@ -51,7 +51,7 @@ check_uefi() {
 # 检查和配置网络（支持静态 IPv4）
 check_network() {
     echo "Checking network connectivity..." | tee -a "$LOGFILE"
-    if ping -c 1 archlinux.org &> /dev/null; then
+    if ping -c 1 qq.com &> /dev/null; then
         dialog --msgbox "Network connection is normal." 6 30
         echo -e "${GREEN}Network connection is normal.${NC}" | tee -a "$LOGFILE"
     else
@@ -60,7 +60,7 @@ check_network() {
             systemctl start iwd
             dialog --msgbox "Please run the following commands to configure wireless network:\nstation wlan0 scan\nstation wlan0 get-networks\nstation wlan0 connect 'Your-Wifi-SSID'\nClick OK when done." 10 50
             iwctl
-            if ! ping -c 1 archlinux.org &> /dev/null; then
+            if ! ping -c 1 qq.com &> /dev/null; then
                 dialog --msgbox "Network still not connected, please check and retry!" 8 40
                 echo -e "${RED}Error: Network connection failed${NC}" | tee -a "$LOGFILE"
                 exit 1
