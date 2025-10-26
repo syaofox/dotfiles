@@ -1,6 +1,8 @@
-{ config, pkgs, ... }:
+{
+  config, pkgs, ... }:
 
 {
+  programs.home-manager.enable = true;
   home.username = "syaofox";
   home.homeDirectory = "/home/syaofox";
   home.stateVersion = "25.05";

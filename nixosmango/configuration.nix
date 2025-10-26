@@ -68,10 +68,12 @@
   # Enable sound.
   # services.pulseaudio.enable = true;
   # OR
-  # services.pipewire = {
-  #   enable = true;
-  #   pulse.enable = true;
-  # };
+  services.pipewire = {
+    enable = true;
+    pulse.enable = true;
+    alsa.enable = true;
+    alsa.support32Bit = true;
+  };
 
   # Enable touchpad support (enabled default in most desktopManager).
   # services.libinput.enable = true;
@@ -86,6 +88,15 @@
   };
 
   programs.firefox.enable = true;
+
+  # Enable polkit for Wayland compositors
+  security.polkit.enable = true;
+
+  # Enable XDG portals for Wayland
+  xdg.portal = {
+    enable = true;
+    wlr.enable = true;
+  };
 
   # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.
