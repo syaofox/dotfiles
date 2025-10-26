@@ -15,6 +15,14 @@ if [ ! -b "$BTRFS_DEV" ]; then
     exit 1
 fi
 
+# Prompt for EFI partition
+echo "Enter your EFI partition (e.g., /dev/nvme0n1p1):"
+read EFI_DEV
+if [ ! -b "$EFI_DEV" ]; then
+    echo "Error: $EFI_DEV is not a valid block device."
+    exit 1
+fi
+
 # Get Btrfs UUID
 BTRFS_UUID=$(lsblk -no UUID "$BTRFS_DEV")
 if [ -z "$BTRFS_UUID" ]; then
@@ -23,13 +31,13 @@ if [ -z "$BTRFS_UUID" ]; then
 fi
 echo "Btrfs UUID: $BTRFS_UUID"
 
-# Get EFI partition UUID
-EFI_DEV=$(lsblk -no NAME,MOUNTPOINT | grep /mnt/boot/efi | awk '{print $1}')
-EFI_UUID=$(lsblk -no UUID "$EFI_DEV" 2>/dev/null)
+# Get EFI UUID
+EFI_UUID=$(lsblk -no UUID "$EFI_DEV")
 if [ -z "$EFI_UUID" ]; then
-    echo "Warning: Could not detect EFI partition UUID. Please update fstab manually."
-    EFI_UUID="YOUR_EFI_UUID"
+    echo "Error: Failed to get UUID for $EFI_DEV."
+    exit 1
 fi
+echo "EFI UUID: $EFI_UUID"
 
 # Prompt for swap file size
 echo "Enter swap file size (e.g., 8G for 8GB):"
@@ -119,7 +127,7 @@ UUID=$BTRFS_UUID /swap           btrfs   subvol=@swap,defaults,noatime,compress=
 EOF
 
 # Verify fstab
-findmnt --verify --fstab "$F四大" || { echo "Error: fstab verification failed."; exit 1; }
+findmnt --verify --fstab "$FSTAB" || { echo "Error: fstab verification failed."; exit 1; }
 
 # Unmount all
 cd ~
