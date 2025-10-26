@@ -7,12 +7,21 @@
     };
   };
 
-  outputs = { self, nixpkgs, mangowc, ... }: {
-    nixosConfigurations.yourHostname = nixpkgs.lib.nixosSystem {
+  outputs = { self, nixpkgs, mangowc, home-manager, ... }: {
+    nixosConfigurations.mango = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
         ./configuration.nix
-        mangowc.nixosModules.default
+        mangowc.nixosModules.default  
+        home-manager.nixosModules.home-manager
+        {
+          home-manager = {
+            useGlobalPkgs = true;
+            useUserPackages = true;
+            users.mango = import ./home.nix;
+            backupFileExtension = "backup";
+          };
+        }
       ];
     };
   };
