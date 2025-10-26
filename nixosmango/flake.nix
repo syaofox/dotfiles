@@ -5,24 +5,29 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    mangowc = {
-      url = "github:DreamMaoMao/mangowc";
+    mango = {
+      url = "github:DreamMaoMao/mango";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, mangowc, home-manager, ... }: {
-    nixosConfigurations.mango = nixpkgs.lib.nixosSystem {
+  outputs = { self, nixpkgs, mango, home-manager, ... }: {
+    nixosConfigurations.vm = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
         ./configuration.nix
-        mangowc.nixosModules.default  
         home-manager.nixosModules.home-manager
+        mango.nixosModules.mango
         {
           home-manager = {
             useGlobalPkgs = true;
             useUserPackages = true;
-            users.syaofox = import ./home.nix;
+            users.syaofox = {
+              imports = [
+                ./home.nix
+                mango.hmModules.mango
+              ];
+            };
             backupFileExtension = "backup";
           };
         }
