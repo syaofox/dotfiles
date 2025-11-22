@@ -1,0 +1,39 @@
+[window]
+opacity = 0.9
+
+[window.padding]
+x = 6
+y = 6
+
+[cursor]
+style.shape = "Underline"
+style.blinking = "On"
+blink_interval = 500
+
+[font]
+normal = { family = "JetBrainsMono Nerd Font Propo", style = "Regular" }
+size = 10
+
+[colors.bright]
+black = "#2d3a3f"
+blue = "#5fc9d3"
+cyan = "#7de8f4"
+green = "#7de8c4"
+magenta = "#b9e5f2"
+red = "#ff9f90"
+white = "#d0e8ea"
+yellow = "#f3e49b"
+
+[colors.normal]
+black = "#0d1416"
+blue = "#45abb7"
+cyan = "#6fd3df"
+green = "#6dd0b3"
+magenta = "#a9d5e2"
+red = "#ff7f70"
+white = "#c5d9dc"
+yellow = "#eecf8b"
+
+[colors.primary]
+background = "#0d1416"
+foreground = "#c5d9dc"

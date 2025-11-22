@@ -1,0 +1,92 @@
+#####################
+# Application keybindings #
+#####################
+
+
+# 启动浏览器 (Brave-browser)
+super + w
+    env LANGUAGE=zh_CN LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 brave
+
+# 顺序切换壁纸
+super + shift + w
+    ~/.config/scripts/wallpaper-next.sh
+     
+# 快捷键帮助
+super + shift + h
+    ~/.config/scripts/help
+    
+# 重载 sxhkd (快捷键守护进程)
+super + Escape
+    pkill -USR1 -x sxhkd; notify-send 'sxhkd' '重新载入配置'
+    
+# 锁屏
+super + shift + l
+    slock
+
+# 搜索
+super + f
+    fsearch
+    
+# 启动文件管理器新页面 (Nemo)
+super + e
+    thunar
+
+# 剪贴板管理器
+super + v
+    clipmenu "-nb" "#f5feff" "-nf" "#0d1416" "-sb" "#45abb7" "-sf" "#f5feff"
+    
+# 增加音量 (自定义脚本)
+super + Insert
+    ~/.config/scripts/changevolume up
+
+# 减小音量 (自定义脚本)   
+super + Delete
+    ~/.config/scripts/changevolume down
+    
+# 切换静音 (自定义脚本)
+super + shift + m
+    ~/.config/scripts/changevolume mute
+    
+# 专用音量增大键
+XF86AudioRaiseVolume
+    ~/.config/scripts/changevolume up
+    
+# 专用音量减小键
+XF86AudioLowerVolume
+    ~/.config/scripts/changevolume down
+    
+# 专用静音键
+XF86AudioMute
+    ~/.config/scripts/changevolume mute
+
+# 增加屏幕亮度
+XF86MonBrightnessUp
+    xbacklight +10
+
+# 减小屏幕亮度
+XF86MonBrightnessDown
+    xbacklight -10
+    
+# 截取屏幕截图 (选择区域，保存并复制到剪贴板)
+super + Print
+    flameshot gui --path ~/Pictures/Screenshots/ --clipboard
+
+# 截取全屏截图 (保存并复制到剪贴板)
+Print
+    flameshot full --path ~/Pictures/Screenshots/ --clipboard
+    
+# 截取屏幕截图 (选择区域，保存并复制到剪贴板)
+super + a
+    flameshot gui --path ~/Pictures/Screenshots/ --clipboard
+
+# 截取全屏截图 (保存并复制到剪贴板)
+super + shift + a
+    flameshot full --path ~/Pictures/Screenshots/ --clipboard
+
+# 屏幕取色（自动复制颜色代码到剪贴板）
+super + shift + p
+    gpick -s -o --no-newline | xclip -selection clipboard && notify-send '取色器' '颜色代码已复制到剪贴板'
+    
+# 关机/重启
+super + control + q
+    ~/.config/scripts/power
